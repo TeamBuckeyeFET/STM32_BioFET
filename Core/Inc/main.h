@@ -69,6 +69,14 @@ void Error_Handler(void);
 #define SWCLK_Pin           GPIO_PIN_14
 #define SWCLK_GPIO_Port     GPIOA
 
+/*
+ * ON-BOARD LED AND KEY
+ */
+#define KEY_Pin             GPIO_PIN_0
+#define KEY_GPIO_Port       GPIOA
+#define LED_Pin             GPIO_PIN_13
+#define LED_GPIO_Port       GPIOC
+
 
 // =============================================================================
 // VIRTUAL PIN DEFINITIONS (MAPPED TO MCP23S17 EXPANDERS)

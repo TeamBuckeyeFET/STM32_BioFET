@@ -32,10 +32,11 @@ float g_ConstantDAC_HV = 5.0f;     // Default 5V
 float g_ConstantDAC_LV = 0.5f;     // Default 0.5V
 uint8_t g_TestRunning = 0;         // 0 = Idle, 1 = Running
 uint32_t g_DataOffset = 0;         // Log Offset
+uint8_t g_TempTestMode = 0;        // 0 = Off, 1 = Blinking, 2 = Solid
 
 // Startup / Hardware Config
-#define BOOT_SWITCH_PIN GPIO_PIN_13
-#define BOOT_SWITCH_PORT GPIOC
+#define USER_KEY_PIN KEY_Pin
+#define USER_KEY_PORT KEY_GPIO_Port
 
 // FLASH CONFIG
 // Define the CS Pin for the Flash here (or in main.h)
@@ -94,11 +95,8 @@ int main(void) {
   // OFFLINE MODE CHECK
   // -------------------------------------------------------------------------
   // Check if Boot Switch is Active (Assume Active LOW or HIGH depending on
-  // hardware) For standard "User Button" on STM32 (blue button), it's usually
-  // Active LOW or HIGH. We'll assume Active LOW for a switch connected to
-  // Ground, or HIGH if VCC. Let's check state. If using on-board button (PC13
-  // on BlackPill), it's active LOW.
-  if (HAL_GPIO_ReadPin(BOOT_SWITCH_PORT, BOOT_SWITCH_PIN) == GPIO_PIN_RESET) {
+  // hardware). Using the User KEY on PA0.
+  if (HAL_GPIO_ReadPin(USER_KEY_PORT, USER_KEY_PIN) == GPIO_PIN_RESET) {
     // Button Pressed / Switch Active -> Auto Start
     g_TestRunning = 1;
     // No UART message here, as we might not be connected to PC
@@ -107,8 +105,43 @@ int main(void) {
   }
 
   uint32_t start_tick = 0;
+  uint32_t last_led_tick = 0;
+  uint8_t key_last_state = GPIO_PIN_SET; // Assuming PULLUP, SET is unpressed
+  uint8_t led_state = 0;
 
   while (1) {
+    // -----------------------------------------------------------------------
+    // Button Debounce and Toggle Logic
+    // -----------------------------------------------------------------------
+    uint8_t current_key_state = HAL_GPIO_ReadPin(KEY_GPIO_Port, KEY_Pin);
+    if (current_key_state == GPIO_PIN_RESET &&
+        key_last_state != GPIO_PIN_RESET) {
+      // Button pressed
+      g_TempTestMode = (g_TempTestMode + 1) % 3;
+      HAL_Delay(50); // Simple debounce
+    }
+    key_last_state = current_key_state;
+
+    // -----------------------------------------------------------------------
+    // LED Control Logic (using non-blocking timing)
+    // -----------------------------------------------------------------------
+    if (g_TempTestMode == 0) {
+      // LED OFF (Active Low: SET means OFF on BlackPill)
+      HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
+      led_state = 0;
+    } else if (g_TempTestMode == 2) {
+      // LED Solid ON (Active Low, so RESET means ON)
+      HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+    } else if (g_TempTestMode == 1) {
+      // LED Blinking (1s ON, 1s OFF)
+      if (HAL_GetTick() - last_led_tick >= 1000) {
+        last_led_tick = HAL_GetTick();
+        led_state = !led_state;
+        HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin,
+                          led_state ? GPIO_PIN_RESET : GPIO_PIN_SET);
+      }
+    }
+
     // -----------------------------------------------------------------------
     // 1. UART COMMAND PROCESSING
     // -----------------------------------------------------------------------
@@ -186,7 +219,7 @@ int main(void) {
           SendResponse("TEST_COMPLETE\n");
           DAC_SetVoltage_0_10V(0.0f);
           start_tick = 0;
-          data_offset = 0; // Reset logging offset? Or keep it?
+          g_DataOffset = 0; // Reset logging offset? Or keep it?
           // For this simple demo, we reset start command logic but maybe offset
           // persists until offload? Left as is: Next START will overwrite from
           // offset 0 (implied by logic, though static var persists)
@@ -244,6 +277,9 @@ void ProcessCommand(char *cmd) {
     g_TestRunning = 0;
     DAC_SetVoltage_0_10V(0.0f); // Safety Reset
     SendResponse("OK: Stopped\n");
+  } else if (strncmp(cmd, "TEMP_TEST", 9) == 0) {
+    g_TempTestMode = (g_TempTestMode + 1) % 3;
+    SendResponse("OK: Temp Test Mode Toggled\n");
   } else if (strncmp(cmd, "READ_FLASH", 10) == 0) {
     OffloadMemory();
   } else if (strncmp(cmd, "PING", 4) == 0) {
@@ -457,11 +493,21 @@ static void MX_GPIO_Init(void) {
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PC13 (Boot Switch) */
-  GPIO_InitStruct.Pin = GPIO_PIN_13;
+  /*Configure GPIO pin : C13 (LED) */
+  HAL_GPIO_WritePin(
+      LED_GPIO_Port, LED_Pin,
+      GPIO_PIN_SET); // LED OFF by default (active low on BlackPill)
+  GPIO_InitStruct.Pin = LED_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(LED_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PA0 (KEY Button) */
+  GPIO_InitStruct.Pin = KEY_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+  HAL_GPIO_Init(KEY_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : FLASH_CS (PB0) */
   HAL_GPIO_WritePin(FLASH_CS_GPIO_Port, FLASH_CS_Pin,

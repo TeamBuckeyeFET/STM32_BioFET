@@ -74,6 +74,9 @@ class BioFETGUI:
 
         self.btn_clear = ttk.Button(ctrl_frame, text="CLEAR MEMORY", command=self.clear_memory, state="disabled")
         self.btn_clear.pack(side="left", fill="x", expand=True, padx=5)
+
+        self.btn_temp_test = ttk.Button(ctrl_frame, text="TEMP TEST", command=self.run_temp_test, state="disabled")
+        self.btn_temp_test.pack(side="left", fill="x", expand=True, padx=5)
         
         # --- LOGGING AREA ---
         log_frame = ttk.LabelFrame(root, text="Device Log", padding=10)
@@ -116,6 +119,7 @@ class BioFETGUI:
                 self.btn_offload.config(state="normal")
                 self.btn_clear.config(state="normal")
                 self.btn_save_settings.config(state="normal")
+                self.btn_temp_test.config(state="normal")
                 
                 # Send Ping
                 self.send_cmd("PING")
@@ -134,6 +138,7 @@ class BioFETGUI:
             self.btn_offload.config(state="disabled")
             self.btn_clear.config(state="disabled")
             self.btn_save_settings.config(state="disabled")
+            self.btn_temp_test.config(state="disabled")
 
     def send_cmd(self, cmd):
         if self.is_connected and self.serial_port:
@@ -159,6 +164,9 @@ class BioFETGUI:
             self.entry_length.config(state="normal")
         else:
             self.entry_length.config(state="disabled")
+
+    def run_temp_test(self):
+        self.send_cmd("TEMP_TEST")
 
     def run_test(self):
         # Configure first (ensure settings are up to date)

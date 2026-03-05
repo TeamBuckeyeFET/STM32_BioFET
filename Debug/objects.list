@@ -1,0 +1,3 @@
+"./Core/Src/main.o"
+"./Core/Src/mcp23s17.o"
+"./Core/Src/w25q32.o"
